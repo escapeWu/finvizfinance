@@ -14,8 +14,9 @@ import sys
 import threading
 import time
 import warnings
-from datetime import date, datetime
+from datetime import datetime, timedelta, timezone, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -571,10 +572,35 @@ def number_covert(num: str) -> float | None:
     return number_convert(num)
 
 
-def format_datetime(date_str: str) -> datetime:
-    if date_str.lower().startswith("today"):
-        today = date.today()
-        time_str = date_str.split()[1]
+FINVIZ_BASE_URL = "https://finviz.com"
+FINVIZ_TZ = ZoneInfo("America/New_York")
+
+
+def normalize_finviz_link(link: str) -> str:
+    """Resolve site-relative finviz news links (e.g. ``/news/...``) to full URLs."""
+    cleaned = link.strip()
+    if cleaned.startswith("/"):
+        return f"{FINVIZ_BASE_URL}{cleaned}"
+    return cleaned
+
+
+def format_datetime(
+    date_str: str,
+    *,
+    tz: tzinfo | None = None,
+    now: datetime | None = None,
+) -> datetime:
+    """Parse a finviz quote-news timestamp in US Eastern time (``America/New_York``).
+
+    Returns a timezone-aware ``datetime`` in ``America/New_York`` (or converted to
+    ``tz`` when supplied). Uses US Eastern "today" rather than the host OS clock so
+    UTC / UTC+8 servers never shift "Today" headlines into tomorrow.
+    """
+    cleaned = date_str.strip()
+    if cleaned.lower().startswith("today"):
+        ref = now.astimezone(FINVIZ_TZ) if now is not None else datetime.now(FINVIZ_TZ)
+        today = ref.date()
+        time_str = cleaned.split()[1]
 
         hour, minute = map(int, time_str[:-2].split(":"))
         ampm = time_str[-2:]
@@ -583,9 +609,56 @@ def format_datetime(date_str: str) -> datetime:
             hour = 0
         elif ampm.lower() == "pm" and hour != 12:
             hour += 12
-        return datetime(today.year, today.month, today.day, hour, minute)
+        dt = datetime(today.year, today.month, today.day, hour, minute, tzinfo=FINVIZ_TZ)
     else:
-        return datetime.strptime(date_str, "%b-%d-%y %I:%M%p")
+        dt = datetime.strptime(cleaned, "%b-%d-%y %I:%M%p").replace(tzinfo=FINVIZ_TZ)
+    return dt.astimezone(tz) if tz is not None else dt
+
+
+def parse_news_datetime(
+    date_str: str,
+    *,
+    now: datetime | None = None,
+    tz: tzinfo = timezone.utc,
+) -> datetime | None:
+    """Parse a ``news.ashx`` date cell in US Eastern time and convert to ``tz``.
+
+    Supports ``"09:39AM"`` (today ET, rolling back 1 day across midnight when ahead
+    of ``now`` by >15m) and ``"Aug-26 10:00AM"``. Date-only strings like ``"Nov-24"``
+    carry no clock time and return ``None``.
+    """
+    cleaned = date_str.strip()
+    if not cleaned:
+        return None
+    ref = now.astimezone(FINVIZ_TZ) if now is not None else datetime.now(FINVIZ_TZ)
+    # Time-only: "09:39AM"
+    try:
+        parsed_time = datetime.strptime(cleaned, "%I:%M%p")
+    except ValueError:
+        parsed_time = None
+    if parsed_time is not None:
+        dt = datetime(
+            ref.year,
+            ref.month,
+            ref.day,
+            parsed_time.hour,
+            parsed_time.minute,
+            tzinfo=FINVIZ_TZ,
+        )
+        if dt > ref + timedelta(minutes=15):
+            dt -= timedelta(days=1)
+        return dt.astimezone(tz)
+    # Month-day + time: "Aug-26 10:00AM" (include explicit year to support leap days and avoid Python 3.15 warning)
+    try:
+        parsed_md = datetime.strptime(f"{ref.year} {cleaned}", "%Y %b-%d %I:%M%p")
+    except ValueError:
+        parsed_md = None
+    if parsed_md is not None:
+        dt = parsed_md.replace(tzinfo=FINVIZ_TZ)
+        if dt > ref + timedelta(days=7):
+            dt = dt.replace(year=ref.year - 1)
+        return dt.astimezone(tz)
+    return None
 
 
 def progress_bar(page: int, total: int) -> None:

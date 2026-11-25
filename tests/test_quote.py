@@ -157,6 +157,24 @@ def test_ticker_news():
     df = _stock("quote_aapl.html").ticker_news()
     assert list(df["Title"]) == ["Apple beats earnings", "Analyst raises target"]
     assert list(df["Source"]) == ["Reuters", "CNBC"]
+    assert df["Date"].iloc[0].tzinfo is not None
+
+
+def test_ticker_news_strips_title_and_normalizes_relative_link():
+    from bs4 import BeautifulSoup
+
+    stock = _stock("quote_aapl.html")
+    stock.soup = BeautifulSoup(
+        '<table class="fullview-news-outer">'
+        '<tr><td>Aug-01-24 10:00AM</td><td>'
+        '<a href="/news/426490/lilly-data">\n   Lilly breast cancer data   \n</a>'
+        "<span> (PR Newswire) </span></td></tr></table>",
+        "lxml",
+    )
+    df = stock.ticker_news()
+    assert df.iloc[0]["Title"] == "Lilly breast cancer data"
+    assert df.iloc[0]["Link"] == "https://finviz.com/news/426490/lilly-data"
+    assert df.iloc[0]["Source"] == "PR Newswire"
 
 
 def test_ticker_inside_trader():

@@ -179,6 +179,30 @@ def test_format_datetime_midnight_and_noon():
     assert format_datetime("Today 01:05PM").hour == 13
 
 
+def test_format_datetime_uses_eastern_today_not_utc():
+    from datetime import datetime, timezone
+
+    # 2026-11-26 01:30 UTC is still 2026-11-25 20:30 EST in New York.
+    ref = datetime(2026, 11, 26, 1, 30, tzinfo=timezone.utc)
+    dt_et = format_datetime("Today 08:15PM", now=ref)
+    assert dt_et.tzinfo == util.FINVIZ_TZ
+    assert (dt_et.year, dt_et.month, dt_et.day, dt_et.hour, dt_et.minute) == (2026, 11, 25, 20, 15)
+    dt_utc = format_datetime("Today 08:15PM", now=ref, tz=timezone.utc)
+    assert dt_utc == datetime(2026, 11, 26, 1, 15, tzinfo=timezone.utc)
+
+
+def test_parse_news_datetime_and_normalize_link():
+    from datetime import datetime, timezone
+
+    # 00:05 EST on Nov 26 (05:05 UTC): "11:50PM" must roll back to Nov 25 23:50 EST (04:50 UTC)
+    ref = datetime(2026, 11, 26, 5, 5, tzinfo=timezone.utc)
+    assert util.parse_news_datetime("11:50PM", now=ref) == datetime(2026, 11, 26, 4, 50, tzinfo=timezone.utc)
+    assert util.parse_news_datetime("Aug-26 10:00AM", now=ref) == datetime(2026, 8, 26, 14, 0, tzinfo=timezone.utc)
+    assert util.parse_news_datetime("Nov-24", now=ref) is None
+    assert util.normalize_finviz_link(" /news/123/story ") == "https://finviz.com/news/123/story"
+    assert util.normalize_finviz_link("https://example.com/a") == "https://example.com/a"
+
+
 def test_image_scrap_function_skips_image_without_query_string():
     # An "img[src]" without a query string used to raise IndexError.
     soup = BeautifulSoup(

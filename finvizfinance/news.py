@@ -12,7 +12,12 @@ from typing import Any
 import pandas as pd
 
 from finvizfinance.exceptions import FinvizParseError
-from finvizfinance.util import require, web_scrap
+from finvizfinance.util import (
+    normalize_finviz_link,
+    parse_news_datetime,
+    require,
+    web_scrap,
+)
 
 NEWS_URL = "https://finviz.com/news.ashx"
 
@@ -69,14 +74,15 @@ class News:
             if len(cols) < 3 or cols[2].a is None:
                 # Empty / malformed news line; skip explicitly (no silent hide).
                 continue
-            date = cols[1].text
-            title = cols[2].text
-            link = cols[2].a["href"]
+            date = cols[1].text.strip()
+            title = cols[2].text.strip()
+            link = normalize_finviz_link(cols[2].a["href"])
             source = link.split("/")[2]
             if source == "feedproxy.google.com":
                 source = link.split("/")[4]
             info_dict = {
                 "Date": date,
+                "DateUTC": parse_news_datetime(date),
                 "Title": title,
                 "Source": source,
                 "Link": link,

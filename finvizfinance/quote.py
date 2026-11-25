@@ -10,15 +10,17 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any
 
 import pandas as pd
 
 from finvizfinance.exceptions import FinvizParseError
 from finvizfinance.util import (
+    FINVIZ_TZ,
     format_datetime,
     image_scrap,
+    normalize_finviz_link,
     number_convert,
     optional,
     require,
@@ -364,7 +366,7 @@ class finvizfinance:
                 continue
             rating_date = cols[0].text
             if rating_date.lower().startswith("today"):
-                rating_date = date.today()
+                rating_date = datetime.now(FINVIZ_TZ).date()
             else:
                 rating_date = datetime.strptime(rating_date, "%b-%d-%y")
             info_dict = {
@@ -433,10 +435,10 @@ class finvizfinance:
             if len(cols) < 2 or cols[1].a is None:
                 # Malformed / empty news line; skip explicitly (no silent hide).
                 continue
-            news_date = cols[0].text
-            title = cols[1].a.text
-            link = cols[1].a["href"]
-            source = cols[1].span.text[1:-1] if cols[1].span else ""
+            news_date = cols[0].text.strip()
+            title = cols[1].a.text.strip()
+            link = normalize_finviz_link(cols[1].a["href"])
+            source = cols[1].span.text.strip()[1:-1].strip() if cols[1].span else ""
             news_time = news_date.split()
             if len(news_time) == 2:
                 last_date = news_time[0]

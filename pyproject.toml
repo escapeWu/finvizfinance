@@ -36,6 +36,7 @@ dependencies = [
 # Only `Earnings.output_excel` needs this; it is imported lazily so the core
 # install stays lean.
 excel = ["xlsxwriter>=3.0"]
+socks = ["requests[socks]>=2.32.0"]
 test = [
     "pytest>=7.0",
     "pytest-mock",

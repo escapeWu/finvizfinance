@@ -16,6 +16,9 @@ def test_news_real():
     assert len(blogs) == 1
     assert news.iloc[0]["Title"] == "Market rallies on data"
     assert news.iloc[0]["Source"] == "www.reuters.com"
+    assert "DateUTC" in news.columns
+    assert news.iloc[0]["DateUTC"] is not None
+    assert news.iloc[0]["DateUTC"].tzinfo is not None
 
 
 def test_news_drift_raises_parse_error():
